@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NutriScan AI — Visual Diet Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    :root {
+      --green:    #2D6A4F;
+      --green-lt: #52B788;
+      --green-xs: #D8F3DC;
+      --cream:    #FEFAE0;
+      --amber:    #E9A825;
+      --dark:     #1B1B1B;
+      --mid:      #4A4A4A;
+      --light:    #F8F5EE;
+      --white:    #FFFFFF;
+      --red:      #E63946;
+      --shadow:   0 8px 40px rgba(45,106,79,0.13);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--light);
+      color: var(--dark);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── BACKGROUND TEXTURE ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 10%, rgba(82,183,136,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 90% 90%, rgba(233,168,37,0.08) 0%, transparent 55%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── HEADER ── */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(254,250,224,0.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1.5px solid rgba(82,183,136,0.2);
+      padding: 0 5vw;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--green), var(--green-lt));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px rgba(45,106,79,0.3);
+    }
+
+    .logo-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.35rem;
+      color: var(--green);
+      letter-spacing: -0.3px;
+    }
+
+    .logo-text span { color: var(--amber); }
+
+    nav a {
+      text-decoration: none;
+      color: var(--mid);
+      font-size: 0.88rem;
+      font-weight: 500;
+      margin-left: 28px;
+      transition: color .2s;
+    }
+    nav a:hover { color: var(--green); }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 72px 5vw 48px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--green-xs);
+      color: var(--green);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 50px;
+      margin-bottom: 20px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      line-height: 1.12;
+      color: var(--dark);
+      max-width: 720px;
+      margin: 0 auto 18px;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      color: var(--green);
+    }
+
+    .hero p {
+      color: var(--mid);
+      font-size: 1.05rem;
+      max-width: 520px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+      font-weight: 300;
+    }
+
+    /* ── MAIN GRID ── */
+    .app-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      max-width: 1060px;
+      margin: 0 auto 60px;
+      padding: 0 5vw;
+    }
+
+    @media (max-width: 780px) {
+      .app-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── CARD BASE ── */
+    .card {
+      background: var(--white);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      border: 1.5px solid rgba(82,183,136,0.12);
+      overflow: hidden;
+      transition: transform .25s, box-shadow .25s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 16px 50px rgba(45,106,79,0.17);
+    }
+
+    .card-header {
+      padding: 22px 26px 16px;
+      border-bottom: 1.5px solid rgba(82,183,136,0.1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .card-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+    }
+
+    .card-icon.green { background: var(--green-xs); }
+    .card-icon.amber { background: #FEF3C7; }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      color: var(--dark);
+    }
+
+    .card-subtitle {
+      font-size: 0.78rem;
+      color: #888;
+      margin-top: 2px;
+    }
+
+    /* ── WEBCAM CARD ── */
+    .webcam-body {
+      padding: 26px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+
+    #webcam-container {
+      width: 100%;
+      max-width: 280px;
+      aspect-ratio: 1;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--green-xs);
+      border: 2px solid rgba(82,183,136,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    #webcam-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+
+    .cam-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--green);
+      opacity: 0.6;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .cam-placeholder .cam-icon { font-size: 42px; }
+
+    /* ── SCAN BUTTON ── */
+    .btn-start {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      background: linear-gradient(135deg, var(--green), var(--green-lt));
+      color: white;
+      border: none;
+      border-radius: 50px;
+      padding: 13px 32px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 6px 22px rgba(45,106,79,0.35);
+      transition: transform .18s, box-shadow .18s, opacity .18s;
+      letter-spacing: 0.2px;
+    }
+
+    .btn-start:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 10px 30px rgba(45,106,79,0.40);
+    }
+
+    .btn-start:active { transform: scale(0.97); }
+
+    .btn-start.active {
+      background: linear-gradient(135deg, #888, #aaa);
+      box-shadow: none;
+      cursor: default;
+    }
+
+    /* ── PULSE RING ── */
+    .pulse-ring {
+      display: none;
+      position: absolute;
+      top: 10px; right: 10px;
+      width: 14px; height: 14px;
+    }
+
+    .pulse-ring.show { display: block; }
+
+    .pulse-ring::before, .pulse-ring::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulseRing 1.4s ease-out infinite;
+    }
+
+    .pulse-ring::after { animation-delay: 0.7s; }
+
+    @keyframes pulseRing {
+      0%   { transform: scale(0.8); opacity: 0.9; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+
+    /* ── RESULTS CARD ── */
+    .results-body {
+      padding: 26px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .prediction-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pred-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pred-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--dark);
+    }
+
+    .pred-pct {
+      font-size: 0.82rem;
+      color: var(--mid);
+      font-weight: 500;
+    }
+
+    .pred-bar-bg {
+      width: 100%;
+      height: 8px;
+      border-radius: 6px;
+      background: var(--green-xs);
+      overflow: hidden;
+    }
+
+    .pred-bar {
+      height: 100%;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--green), var(--green-lt));
+      transition: width 0.45s cubic-bezier(.4,0,.2,1);
+    }
+
+    .results-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 12px;
+      opacity: 0.4;
+      font-size: 0.85rem;
+      color: var(--mid);
+    }
+
+    .results-placeholder span { font-size: 40px; }
+
+    /* ── CALORIE HERO CARD ── */
+    .calorie-card {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, var(--green) 0%, #1a4731 100%);
+      color: white;
+      border: none;
+    }
+
+    .calorie-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+      padding: 36px 40px;
+      flex-wrap: wrap;
+    }
+
+    .calorie-left { flex: 1; min-width: 180px; }
+
+    .calorie-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 8px;
+    }
+
+    .calorie-detected {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 900;
+      margin-bottom: 4px;
+    }
+
+    .calorie-confidence {
+      font-size: 0.82rem;
+      opacity: 0.65;
+    }
+
+    .calorie-divider {
+      width: 1.5px;
+      height: 80px;
+      background: rgba(255,255,255,0.2);
+    }
+
+    .calorie-right { flex: 1; min-width: 180px; text-align: right; }
+
+    .cal-number {
+      font-family: 'Playfair Display', serif;
+      font-size: 3.5rem;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--amber);
+    }
+
+    .cal-unit {
+      font-size: 1rem;
+      opacity: 0.75;
+      margin-top: 4px;
+    }
+
+    .cal-note {
+      font-size: 0.75rem;
+      opacity: 0.5;
+      margin-top: 6px;
+    }
+
+    .calorie-waiting {
+      text-align: center;
+      opacity: 0.5;
+      font-size: 0.92rem;
+      padding: 18px 0;
+      font-style: italic;
+      width: 100%;
+    }
+
+    /* ── NUTRITION TABLE CARD ── */
+    .nutrition-card {
+      grid-column: 1 / -1;
+    }
+
+    .nutrition-body {
+      padding: 26px;
+    }
+
+    .nutrition-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 16px;
+    }
+
+    .nut-item {
+      background: var(--light);
+      border-radius: 14px;
+      padding: 18px 16px;
+      text-align: center;
+      border: 1.5px solid rgba(82,183,136,0.1);
+      transition: border-color .2s;
+    }
+
+    .nut-item:hover { border-color: var(--green-lt); }
+
+    .nut-icon { font-size: 26px; margin-bottom: 8px; }
+
+    .nut-value {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .nut-label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    /* ── HOW TO USE ── */
+    .how-section {
+      position: relative;
+      z-index: 1;
+      max-width: 1060px;
+      margin: 0 auto 72px;
+      padding: 0 5vw;
+    }
+
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.8rem;
+      text-align: center;
+      margin-bottom: 36px;
+      color: var(--dark);
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+
+    .step-card {
+      background: var(--white);
+      border-radius: 18px;
+      padding: 28px 22px;
+      text-align: center;
+      border: 1.5px solid rgba(82,183,136,0.12);
+      position: relative;
+    }
+
+    .step-num {
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--green), var(--green-lt));
+      color: white;
+      font-family: 'Playfair Display', serif;
+      font-size: 0.95rem;
+      font-weight: 900;
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 14px rgba(45,106,79,0.3);
+    }
+
+    .step-icon { font-size: 34px; margin: 12px 0 10px; }
+
+    .step-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+      color: var(--dark);
+    }
+
+    .step-desc {
+      font-size: 0.82rem;
+      color: #888;
+      line-height: 1.6;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      position: relative;
+      z-index: 1;
+      background: var(--dark);
+      color: rgba(255,255,255,0.55);
+      text-align: center;
+      padding: 30px 5vw;
+      font-size: 0.82rem;
+    }
+
+    footer strong { color: rgba(255,255,255,0.85); }
+
+    /* ── STATUS TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--dark);
+      color: white;
+      padding: 12px 26px;
+      border-radius: 50px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      z-index: 999;
+      transition: transform .35s cubic-bezier(.34,1.56,.64,1);
+      white-space: nowrap;
+    }
+
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── SCANNING ANIMATION ── */
+    @keyframes scanLine {
+      0%   { top: 0; }
+      100% { top: 100%; }
+    }
+
+    .scan-line {
+      display: none;
+      position: absolute;
+      left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, transparent, var(--green-lt), transparent);
+      animation: scanLine 1.6s linear infinite;
+      border-radius: 2px;
+    }
+
+    .scan-line.active { display: block; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .calorie-inner { flex-direction: column; text-align: center; }
+      .calorie-right { text-align: center; }
+      .calorie-divider { display: none; }
+      header nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <a class="logo" href="#">
+    <div class="logo-icon">🥗</div>
+    <div class="logo-text">Nutri<span>Scan</span> AI</div>
+  </a>
+  <nav>
+    <a href="#scanner">Scanner</a>
+    <a href="#how">How to Use</a>
+    <a href="#">About</a>
+  </nav>
+</header>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="hero-badge">🎓 KU — UIT · AI Mini Project · Sem 2 CSE</div>
+  <h1>Your <em>Intelligent</em><br>Visual Diet Assistant</h1>
+  <p>Point your camera at any food item and let our AI instantly identify it and display its estimated calorie count — powered by Teachable Machine.</p>
+</section>
+
+<!-- ── APP GRID ── -->
+<section class="app-grid" id="scanner">
+
+  <!-- Webcam Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon green">📷</div>
+      <div>
+        <div class="card-title">Live Camera Feed</div>
+        <div class="card-subtitle">Point your camera at a food item</div>
+      </div>
+    </div>
+    <div class="webcam-body">
+      <div id="webcam-container">
+        <div class="cam-placeholder" id="cam-placeholder">
+          <div class="cam-icon">🍎</div>
+          <div>Camera not started</div>
+        </div>
+        <div class="scan-line" id="scan-line"></div>
+        <div class="pulse-ring" id="pulse-ring"></div>
+      </div>
+      <button class="btn-start" id="start-btn" onclick="init()">
+        <span>▶</span> Start Scanning
+      </button>
+      <p style="font-size:0.76rem;color:#aaa;text-align:center;max-width:240px;line-height:1.5">
+        Allow camera access when prompted. Hold food close to camera for best results.
+      </p>
+    </div>
+  </div>
+
+  <!-- Predictions Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon amber">🔍</div>
+      <div>
+        <div class="card-title">AI Predictions</div>
+        <div class="card-subtitle">Confidence score per food class</div>
+      </div>
+    </div>
+    <div class="results-body" id="label-container">
+      <div class="results-placeholder">
+        <span>🧠</span>
+        <div>Predictions will appear here<br>once the scanner is active.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calorie Hero Card -->
+  <div class="card calorie-card" id="calorie-card">
+    <div class="calorie-inner" id="calorie-inner">
+      <div class="calorie-waiting">▶ Press <strong>Start Scanning</strong> to detect a food item</div>
+    </div>
+  </div>
+
+  <!-- Nutrition Detail Card -->
+  <div class="card nutrition-card" id="nutrition-card" style="display:none">
+    <div class="card-header">
+      <div class="card-icon green">🧪</div>
+      <div>
+        <div class="card-title">Nutritional Breakdown</div>
+        <div class="card-subtitle" id="nutrition-subtitle">per 100g serving</div>
+      </div>
+    </div>
+    <div class="nutrition-body">
+      <div class="nutrition-grid" id="nutrition-grid"></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── HOW TO USE ── -->
+<section class="how-section" id="how">
+  <div class="section-title">How to Use NutriScan AI</div>
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-num">1</div>
+      <div class="step-icon">📂</div>
+      <div class="step-title">Load Your Model</div>
+      <div class="step-desc">Place your Teachable Machine model files in the <code>my_model/</code> folder alongside this HTML file.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">2</div>
+      <div class="step-icon">▶️</div>
+      <div class="step-title">Start the Scanner</div>
+      <div class="step-desc">Click the <strong>Start Scanning</strong> button and allow camera permissions when prompted.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">3</div>
+      <div class="step-icon">🍎</div>
+      <div class="step-title">Hold Up Your Food</div>
+      <div class="step-desc">Point your camera at a food item from a close, well-lit angle for the best recognition accuracy.</div>
+    </div>
+    <div class="step-card">
+      <div class="step-num">4</div>
+      <div class="step-icon">📊</div>
+      <div class="step-title">Read Your Results</div>
+      <div class="step-desc">The AI will display the detected food name, calorie count, and nutritional information in real time.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  Built by <strong>B.Tech CSE Sem 2 Team</strong> · <strong>Karnavati University – UIT</strong> &nbsp;|&nbsp;
+  Powered by <strong>Teachable Machine</strong> &amp; <strong>TensorFlow.js</strong> &nbsp;|&nbsp;
+  AI Mini Project 2026
+</footer>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ── AI LOGIC ── -->
+<script>
+  // ── YOUR MODEL URL ──────────────────────────────────────────────
+  const URL = "./my_model/";
+  // ────────────────────────────────────────────────────────────────
+
+  let model, webcam, maxPredictions;
+  let isRunning = false;
+
+  // ── CALORIE + NUTRITION DATABASE ────────────────────────────────
+  // Add / edit entries here to match your Teachable Machine classes.
+  // Keys should match your class names EXACTLY (case-insensitive lookup applied).
+  const foodData = {
+    "apple":    { calories: 52,  carbs: 14,  protein: 0.3, fat: 0.2, fiber: 2.4, emoji: "🍎", serving: "per 100g" },
+    "banana":   { calories: 89,  carbs: 23,  protein: 1.1, fat: 0.3, fiber: 2.6, emoji: "🍌", serving: "per 100g" },
+    "orange":   { calories: 47,  carbs: 12,  protein: 0.9, fat: 0.1, fiber: 2.4, emoji: "🍊", serving: "per 100g" },
+    "bread":    { calories: 265, carbs: 49,  protein: 9,   fat: 3.2, fiber: 2.7, emoji: "🍞", serving: "per 100g" },
+    "egg":      { calories: 155, carbs: 1.1, protein: 13,  fat: 11,  fiber: 0,   emoji: "🥚", serving: "per 100g" },
+    "eggs":     { calories: 155, carbs: 1.1, protein: 13,  fat: 11,  fiber: 0,   emoji: "🥚", serving: "per 100g" },
+    "rice":     { calories: 130, carbs: 28,  protein: 2.7, fat: 0.3, fiber: 0.4, emoji: "🍚", serving: "per 100g (cooked)" },
+    "pizza":    { calories: 266, carbs: 33,  protein: 11,  fat: 10,  fiber: 2.3, emoji: "🍕", serving: "per 100g" },
+    "burger":   { calories: 295, carbs: 24,  protein: 17,  fat: 14,  fiber: 1.3, emoji: "🍔", serving: "per 100g" },
+    "salad":    { calories: 20,  carbs: 3.5, protein: 1.3, fat: 0.3, fiber: 2.1, emoji: "🥗", serving: "per 100g" },
+    "pasta":    { calories: 158, carbs: 31,  protein: 5.8, fat: 0.9, fiber: 1.8, emoji: "🍝", serving: "per 100g (cooked)" },
+    "mango":    { calories: 60,  carbs: 15,  protein: 0.8, fat: 0.4, fiber: 1.6, emoji: "🥭", serving: "per 100g" },
+    "grapes":   { calories: 67,  carbs: 17,  protein: 0.6, fat: 0.4, fiber: 0.9, emoji: "🍇", serving: "per 100g" },
+    "tomato":   { calories: 18,  carbs: 3.9, protein: 0.9, fat: 0.2, fiber: 1.2, emoji: "🍅", serving: "per 100g" },
+    "carrot":   { calories: 41,  carbs: 10,  protein: 0.9, fat: 0.2, fiber: 2.8, emoji: "🥕", serving: "per 100g" },
+    "broccoli": { calories: 34,  carbs: 7,   protein: 2.8, fat: 0.4, fiber: 2.6, emoji: "🥦", serving: "per 100g" },
+    "chicken":  { calories: 239, carbs: 0,   protein: 27,  fat: 14,  fiber: 0,   emoji: "🍗", serving: "per 100g" },
+    "milk":     { calories: 61,  carbs: 4.8, protein: 3.2, fat: 3.3, fiber: 0,   emoji: "🥛", serving: "per 100g" },
+    "sandwich": { calories: 250, carbs: 32,  protein: 12,  fat: 8,   fiber: 2,   emoji: "🥪", serving: "per 100g" },
+  };
+
+  function getFoodInfo(className) {
+    const key = className.trim().toLowerCase();
+    // exact match
+    if (foodData[key]) return { ...foodData[key], name: className };
+    // partial match
+    for (const [k, v] of Object.entries(foodData)) {
+      if (key.includes(k) || k.includes(key)) return { ...v, name: className };
+    }
+    return null;
+  }
+
+  // ── INIT ────────────────────────────────────────────────────────
+  async function init() {
+    if (isRunning) return;
+
+    const btn = document.getElementById('start-btn');
+    btn.classList.add('active');
+    btn.innerHTML = '<span>⏳</span> Loading Model…';
+
+    showToast('Loading AI model…');
+
+    try {
+      const modelURL    = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+
+      model          = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
+
+      const flip = true;
+      webcam = new tmImage.Webcam(280, 280, flip);
+      await webcam.setup();
+      await webcam.play();
+
+      // clear placeholder, add canvas
+      const wc = document.getElementById("webcam-container");
+      document.getElementById("cam-placeholder").style.display = "none";
+      wc.appendChild(webcam.canvas);
+
+      // start scan line animation
+      document.getElementById("scan-line").classList.add("active");
+      document.getElementById("pulse-ring").classList.add("show");
+
+      // build prediction items
+      const lc = document.getElementById("label-container");
+      lc.innerHTML = "";
+      for (let i = 0; i < maxPredictions; i++) {
+        const item = document.createElement("div");
+        item.className = "prediction-item";
+        item.innerHTML = `
+          <div class="pred-label-row">
+            <span class="pred-name">—</span>
+            <span class="pred-pct">0%</span>
+          </div>
+          <div class="pred-bar-bg">
+            <div class="pred-bar" style="width:0%"></div>
+          </div>`;
+        lc.appendChild(item);
+      }
+
+      isRunning = true;
+      btn.innerHTML = '<span>✅</span> Scanning Active';
+      showToast('Camera active — hold food up to the lens!');
+      window.requestAnimationFrame(loop);
+
+    } catch (err) {
+      console.error(err);
+      btn.classList.remove('active');
+      btn.innerHTML = '<span>▶</span> Start Scanning';
+      showToast('⚠️ Could not load model. Check my_model/ folder.');
+    }
+  }
+
+  async function loop() {
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+  }
+
+  // ── PREDICT ─────────────────────────────────────────────────────
+  async function predict() {
+    const prediction = await model.predict(webcam.canvas);
+    const lc = document.getElementById("label-container");
+
+    let best = prediction[0];
+    for (const p of prediction) {
+      if (p.probability > best.probability) best = p;
+    }
+
+    // update prediction bars
+    prediction.forEach((p, i) => {
+      const item = lc.childNodes[i];
+      if (!item) return;
+      const pct   = Math.round(p.probability * 100);
+      item.querySelector('.pred-name').textContent = p.className;
+      item.querySelector('.pred-pct').textContent  = pct + '%';
+      item.querySelector('.pred-bar').style.width  = pct + '%';
+    });
+
+    // calorie & nutrition update (only if confident enough)
+    if (best.probability > 0.45) {
+      updateCalories(best.className, best.probability);
+    }
+  }
+
+  let lastDetected = null;
+
+  function updateCalories(className, confidence) {
+    if (className === lastDetected) return;
+    lastDetected = className;
+
+    const info = getFoodInfo(className);
+    const ci   = document.getElementById("calorie-inner");
+    const nc   = document.getElementById("nutrition-card");
+    const pct  = Math.round(confidence * 100);
+
+    if (!info) {
+      ci.innerHTML = `
+        <div class="calorie-left">
+          <div class="calorie-label">Detected Food</div>
+          <div class="calorie-detected">🍽 ${className}</div>
+          <div class="calorie-confidence">Confidence: ${pct}%</div>
+        </div>
+        <div class="calorie-divider"></div>
+        <div class="calorie-right">
+          <div class="cal-number" style="font-size:1.8rem;color:#aaa">—</div>
+          <div class="cal-unit">Calorie data not found</div>
+          <div class="cal-note">Add this food to the database in index.html</div>
+        </div>`;
+      nc.style.display = "none";
+      return;
+    }
+
+    ci.innerHTML = `
+      <div class="calorie-left">
+        <div class="calorie-label">Detected Food</div>
+        <div class="calorie-detected">${info.emoji} ${info.name}</div>
+        <div class="calorie-confidence">Confidence: ${pct}% &nbsp;·&nbsp; ${info.serving}</div>
+      </div>
+      <div class="calorie-divider"></div>
+      <div class="calorie-right">
+        <div class="cal-number">${info.calories}</div>
+        <div class="cal-unit">kcal</div>
+        <div class="cal-note">Estimated calories per serving</div>
+      </div>`;
+
+    // nutrition grid
+    nc.style.display = "block";
+    document.getElementById("nutrition-subtitle").textContent = info.serving;
+    document.getElementById("nutrition-grid").innerHTML = `
+      <div class="nut-item">
+        <div class="nut-icon">🔥</div>
+        <div class="nut-value">${info.calories}</div>
+        <div class="nut-label">Calories (kcal)</div>
+      </div>
+      <div class="nut-item">
+        <div class="nut-icon">🌾</div>
+        <div class="nut-value">${info.carbs}g</div>
+        <div class="nut-label">Carbohydrates</div>
+      </div>
+      <div class="nut-item">
+        <div class="nut-icon">💪</div>
+        <div class="nut-value">${info.protein}g</div>
+        <div class="nut-label">Protein</div>
+      </div>
+      <div class="nut-item">
+        <div class="nut-icon">🫒</div>
+        <div class="nut-value">${info.fat}g</div>
+        <div class="nut-label">Total Fat</div>
+      </div>
+      <div class="nut-item">
+        <div class="nut-icon">🌿</div>
+        <div class="nut-value">${info.fiber}g</div>
+        <div class="nut-label">Dietary Fiber</div>
+      </div>`;
+  }
+
+  // ── TOAST ───────────────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
